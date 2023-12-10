@@ -1,55 +1,54 @@
 <?php
 
+declare(strict_types=1);
+
 define('LIMONADE', '0.5.0');
 define('LIM_SESSION_NAME', '_lim_sess');
 define('NOT_FOUND', 404);
 define('SERVER_ERROR', 500);
-
-define('CACHE_MAX_AGE', 5 * 60);             // Seconds to cache files for  
+define('CACHE_MAX_AGE', 5 * 60);             // Seconds to cache files for
 
 @clearstatcache();
 
 function option($name = null, $values = null)
 {
-    static $options = array();
+    static $options = [];
     $args = func_get_args();
     $name = array_shift($args);
-    if (is_null($name))
+    if (null === $name) {
         return $options;
-    if (!empty($args))
-    {
+    }
+    if (!empty($args)) {
         $options[$name] = count($args) > 1 ? $args : $args[0];
     }
-    if (array_key_exists($name, $options))
+    if (array_key_exists($name, $options)) {
         return $options[$name];
-    return;
+    }
 }
 
 function params($name_or_array_or_null = null, $value = null)
 {
-    static $params = array();
+    static $params = [];
     $args = func_get_args();
 
-    if (func_num_args() > 0)
-    {
+    if (func_num_args() > 0) {
         $name = array_shift($args);
-        if (is_null($name))
-        {
+        if (null === $name) {
+            $params = [];
 
-            $params = array();
             return $params;
         }
-        if (is_array($name))
-        {
+        if (is_array($name)) {
             $params = array_merge($params, $name);
+
             return $params;
         }
         $nargs = count($args);
-        if ($nargs > 0)
-        {
+        if ($nargs > 0) {
             $value = $nargs > 1 ? $args : $args[0];
             $params[$name] = $value;
         }
+
         return array_key_exists($name, $params) ? $params[$name] : null;
     }
 
@@ -58,17 +57,19 @@ function params($name_or_array_or_null = null, $value = null)
 
 function set($name = null, $values = null)
 {
-    static $vars = array();
+    static $vars = [];
     $args = func_get_args();
     $name = array_shift($args);
-    if (is_null($name))
+    if (null === $name) {
         return $vars;
-    if (!empty($args))
-    {
+    }
+    if (!empty($args)) {
         $vars[$name] = count($args) > 1 ? $args : $args[0];
     }
-    if (array_key_exists($name, $vars))
+    if (array_key_exists($name, $vars)) {
         return $vars[$name];
+    }
+
     return $vars;
 }
 
@@ -83,7 +84,7 @@ function run($env = null)
     $base_path = dirname(file_path($_SERVER['SCRIPT_NAME']));
     $base_file = basename($_SERVER['SCRIPT_NAME']);
     $base_uri = file_path($base_path, (($base_file == 'index.php') ? '' : $base_file . '?'));
-    
+
     option('root_dir', $root_dir);
     option('base_path', $base_path);
     option('base_uri', $base_uri);
@@ -93,509 +94,467 @@ function run($env = null)
     option('gzip', false);
     option('autorender', false);
     option('x-sendfile', 0);
-    
+
     option('cache_dir', $root_dir . '/cache/');
-    option('route_cache_filename', option('cache_dir') . 'routes.dat');
-    
+    option('route_cache_filename', option('cache_dir') . 'routes.cache');
+
     call_if_exists('configure');
-    
-    $cache_fname = option('route_cache_filename');    
+
+    $cache_fname = option('route_cache_filename');
     $cache_mtime = (@file_exists($cache_fname)) ? @filemtime($cache_fname) : 0;
-    
-    if (time() - CACHE_MAX_AGE > $cache_mtime)
-    {
+
+    if (time() - CACHE_MAX_AGE > $cache_mtime) {
         file_put_contents($cache_fname, serialize(route()), LOCK_EX);
-    }    
-    
-    if (is_bool(option('gzip')) && option('gzip'))
-    {
+    }
+
+    if (is_bool(option('gzip')) && option('gzip')) {
         ini_set('zlib.output_compression', '1');
     }
 
-    if (!defined('SID') && option('session'))
-    {
-        if (!is_bool(option('session')))
+    if (!defined('SID') && option('session')) {
+        if (!is_bool(option('session'))) {
             session_name(option('session'));
-        if (!session_start())
-            trigger_error("An error occured while trying to start the session",
-                E_USER_WARNING);
+        }
+        if (!session_start()) {
+            trigger_error(
+                'An error occurred while trying to start the session',
+                E_USER_WARNING
+            );
+        }
     }
 
-    if (!function_exists('after'))
-    {
+    if (!function_exists('after')) {
         function after($output)
         {
             return $output;
         }
     }
 
-    if (!function_exists('route_missing'))
-    {
-        function route_missing($request_method, $request_uri)
+    if (!function_exists('route_missing')) {
+        function route_missing($request_method, $request_uri): void
         {
             halt(NOT_FOUND, "($request_method) $request_uri");
         }
     }
 
-    if ($rm = request_method())
-    {
-        if (request_is_head())
+    if ($rm = request_method()) {
+        if (request_is_head()) {
             ob_start();
+        }
 
-        if (!request_method_is_allowed($rm))
+        if (!request_method_is_allowed($rm)) {
             halt(HTTP_NOT_IMPLEMENTED, "The requested method <code>'$rm'</code> is not implemented");
+        }
 
-        if ($route = route_find($rm, request_uri()))
-        {
+        if ($route = route_find($rm, request_uri())) {
             params($route['params']);
 
-            if (function_exists('autoload_controller'))
-            {
+            if (function_exists('autoload_controller')) {
                 autoload_controller($route['function']);
             }
 
-            if (is_callable($route['function']))
-            {
+            if (is_callable($route['function'])) {
                 call_if_exists('before', $route);
                 $output = call_user_func_array($route['function'], array_values($route['params']));
-                if (is_null($output) && option('autorender'))
+                if (null === $output && option('autorender')) {
                     $output = call_if_exists('autorender', $route);
+                }
                 echo after($output, $route);
-            }
-            else
+            } else {
                 halt(SERVER_ERROR, "Routing error: undefined function '{$route['function']}'", $route);
-        }
-        else
+            }
+        } else {
             route_missing($rm, request_uri());
-    }
-    else
+        }
+    } else {
         halt(HTTP_NOT_IMPLEMENTED, "The requested method <code>'$rm'</code> is not implemented");
+    }
 }
 
 function request_method($env = null)
 {
     $m = array_key_exists('REQUEST_METHOD', $_SERVER) ? $_SERVER['REQUEST_METHOD'] : null;
 
-    if (!in_array(strtoupper($m), request_methods()))
-    {
-        trigger_error("'$m' request method is unkown or unavailable.", E_USER_WARNING);
+    if (null !== $m && !in_array(strtoupper($m), request_methods())) {
+        trigger_error("'$m' request method is unknown or unavailable.", E_USER_WARNING);
+
         return false;
     }
+
     return $m;
 }
 
 function request_method_is_allowed($m = null)
 {
-    if (is_null($m))
+    if (null === $m) {
         $m = request_method();
+    }
+
     return in_array(strtoupper($m), request_methods());
 }
 
 function request_is_get($env = null)
 {
-    return request_method($env) == "GET";
+    return request_method($env) == 'GET';
 }
 
 function request_is_post($env = null)
 {
-    return request_method($env) == "POST";
+    return request_method($env) == 'POST';
 }
 
 function request_is_head($env = null)
 {
-    return request_method($env) == "HEAD";
+    return request_method($env) == 'HEAD';
 }
 
 function request_methods()
 {
-    return array("GET", "POST", "HEAD");
+    return ['GET', 'POST', 'HEAD'];
 }
 
 function request_uri($env = null)
 {
     static $uri = null;
-    if (is_null($env))
-    {
-        if (!is_null($uri))
+    if (null === $env) {
+        if (null !== $uri) {
             return $uri;
-    }
-
-    if (array_key_exists('uri', $_GET))
-    {
-        $uri = $_GET['uri'];
-    }
-    else
-        if (array_key_exists('u', $_GET))
-        {
-            $uri = $_GET['u'];
         }
-        else
-        {
-            $app_file = APP_FILE;
-            $path_info = isset($_SERVER['PATH_INFO']) ? $_SERVER['PATH_INFO'] : @getenv('PATH_INFO');
-            $query_string = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : @getenv('QUERY_STRING');
+    }
 
-            if (trim($path_info, '/') != '' && $path_info != "/" . $app_file)
-            {
-                if (strpos($path_info, '&') !== 0)
-                {
+    if (array_key_exists('uri', $_GET)) {
+        $uri = $_GET['uri'];
+    } elseif (array_key_exists('u', $_GET)) {
+        $uri = $_GET['u'];
+    } else {
+        $app_file = APP_FILE;
+        $path_info = $_SERVER['PATH_INFO'] ?? @getenv('PATH_INFO');
+        $query_string = $_SERVER['QUERY_STRING'] ?? @getenv('QUERY_STRING');
 
-                    $params = explode('&', $path_info);
-                    $path_info = array_shift($params);
+        if (trim($path_info, '/') != '' && $path_info != '/' . $app_file) {
+            if (!str_starts_with($path_info, '&')) {
+                $params = explode('&', $path_info);
+                $path_info = array_shift($params);
 
-                    foreach ($params as $param)
-                    {
-                        if (strpos($param, '=') > 0)
-                        {
-                            list($k, $v) = explode('=', $param);
-                            $_GET[$k] = $v;
-                        }
+                foreach ($params as $param) {
+                    if (strpos($param, '=') > 0) {
+                        [$k, $v] = explode('=', $param);
+                        $_GET[$k] = $v;
                     }
                 }
-                $uri = $path_info;
-            } 
-            elseif (trim($query_string, '/') != '')
-            {
-                $uri = $query_string;
-                $get = $_GET;
-                if (count($get) > 0)
-                {
-
-                    $first = array_shift(array_keys($get));
-                    if (strpos($query_string, $first) === 0)
-                        $uri = $first;
-                }
-            } 
-            elseif (array_key_exists('REQUEST_URI', $_SERVER) && !empty($_SERVER['REQUEST_URI']))
-            {
-                $request_uri = rtrim(rawurldecode($_SERVER['REQUEST_URI']), '?/') . '/';
-                $base_path = $_SERVER['SCRIPT_NAME'];
-
-                if ($request_uri . "index.php" == $base_path)
-                    $request_uri .= "index.php";
-                $uri = str_replace($base_path, '', $request_uri);
-            } 
-            elseif ($_SERVER['argc'] > 1 && trim($_SERVER['argv'][1], '/') != '')
-            {
-                $uri = $_SERVER['argv'][1];
             }
+            $uri = $path_info;
+        } elseif (trim($query_string, '/') != '') {
+            $uri = $query_string;
+            $get = $_GET;
+            if (count($get) > 0) {
+                $first = array_shift(array_keys($get));
+                if (str_starts_with($query_string, $first)) {
+                    $uri = $first;
+                }
+            }
+        } elseif (array_key_exists('REQUEST_URI', $_SERVER) && !empty($_SERVER['REQUEST_URI'])) {
+            $request_uri = rtrim(rawurldecode($_SERVER['REQUEST_URI']), '?/') . '/';
+            $base_path = $_SERVER['SCRIPT_NAME'];
+
+            if ($request_uri . 'index.php' == $base_path) {
+                $request_uri .= 'index.php';
+            }
+            $uri = str_replace($base_path, '', $request_uri);
+        } elseif ($_SERVER['argc'] > 1 && trim($_SERVER['argv'][1], '/') != '') {
+            $uri = $_SERVER['argv'][1];
         }
+    }
 
-        $uri = rtrim($uri, "/");
+    $uri = rtrim($uri, '/');
 
-    if (empty($uri))
-    {
+    if (empty($uri)) {
         $uri = '/';
+    } elseif ($uri[0] != '/') {
+        $uri = '/' . $uri;
     }
-    elseif ($uri[0] != '/')
-    {
-            $uri = '/' . $uri;
-    }
-    
+
     return rawurldecode($uri);
 }
 
-function dispatch($path_or_array, $function, $options = array())
+function dispatch($path_or_array, $function, $options = []): void
 {
     dispatch_get($path_or_array, $function, $options);
 }
 
-function dispatch_get($path_or_array, $function, $options = array())
+function dispatch_get($path_or_array, $function, $options = []): void
 {
-    route("GET", $path_or_array, $function, $options);
-    route("HEAD", $path_or_array, $function, $options);
+    route('GET', $path_or_array, $function, $options);
+    route('HEAD', $path_or_array, $function, $options);
 }
 
-function dispatch_post($path_or_array, $function, $options = array())
+function dispatch_post($path_or_array, $function, $options = []): void
 {
-    route("POST", $path_or_array, $function, $options);
+    route('POST', $path_or_array, $function, $options);
 }
 
 function route()
 {
-    static $routes = array();
-    static $cache_loaded = FALSE;
-    
-    if ($cache_loaded)
-    {
+    static $routes = [];
+    static $cache_loaded = false;
+
+    if ($cache_loaded) {
         return $routes;
     }
-    
+
     $cache_fname = option('route_cache_filename');
-    if (@file_exists($cache_fname))
-    {
+    if (($cache_fname !== null) && @file_exists($cache_fname)) {
         $data = unserialize(file_get_contents($cache_fname));
-        if ($data === FALSE)
-        {
+        if ($data === false) {
             @unlink($cache_fname);
-        }
-        else
-        {
+        } else {
             $routes = (array) $data;
-            $cache_loaded = TRUE;
+            $cache_loaded = true;
+
             return $routes;
         }
     }
-    
-    $nargs = func_num_args();
-    if ($nargs > 0)
-    {
-        $args = func_get_args();
-        if ($nargs === 1 && is_null($args[0]))
-            $routes = array();
-        else
-            if ($nargs < 3)
-                trigger_error("Missing arguments for route()", E_USER_ERROR);
-            else
-            {
-                $method = $args[0];
-                $path_or_array = $args[1];
-                $func = $args[2];
-                $options = $nargs > 3 ? $args[3] : array();
 
-                $routes[] = route_build($method, $path_or_array, $func, $options);
-            }
+    $nargs = func_num_args();
+    if ($nargs > 0) {
+        $args = func_get_args();
+        if ($nargs === 1 && null === $args[0]) {
+            $routes = [];
+        } elseif ($nargs < 3) {
+            trigger_error('Missing arguments for route()', E_USER_ERROR);
+        } else {
+            $method = $args[0];
+            $path_or_array = $args[1];
+            $func = $args[2];
+            $options = $nargs > 3 ? $args[3] : [];
+
+            $routes[] = route_build($method, $path_or_array, $func, $options);
+        }
     }
+
     return $routes;
 }
 
-function route_build($method, $path_or_array, $func, $options = array())
+function route_build($method, $path_or_array, $func, $options = [])
 {
     $method = strtoupper($method);
-    if (!in_array($method, request_methods()))
+    if (!in_array($method, request_methods())) {
         trigger_error("'$method' request method is unkown or unavailable.", E_USER_WARNING);
+    }
 
-    if (is_array($path_or_array))
-    {
+    if (is_array($path_or_array)) {
         $path = array_shift($path_or_array);
         $names = $path_or_array[0];
-    }
-    else
-    {
+    } else {
         $path = $path_or_array;
-        $names = array();
+        $names = [];
     }
 
-    $single_asterisk_subpattern = "(?:/([^\/]*))?";
-    $double_asterisk_subpattern = "(?:/(.*))?";
-    $optionnal_slash_subpattern = "(?:/*?)";
-    $no_slash_asterisk_subpattern = "(?:([^\/]*))?";
+    $single_asterisk_subpattern = '(?:/([^\\/]*))?';
+    $double_asterisk_subpattern = '(?:/(.*))?';
+    $optionnal_slash_subpattern = '(?:/*?)';
+    $no_slash_asterisk_subpattern = '(?:([^\\/]*))?';
 
-    if ($path[0] == "^")
-    {
-        if ($path{strlen($path) - 1} != "$")
-            $path .= "$";
-        $pattern = "#" . $path . "#i";
-    }
-    elseif (empty($path) || $path == "/")
-    {
-            $pattern = "#^" . $optionnal_slash_subpattern . "$#";
-    }
-    else
-    {
-        $parsed = array();
+    if ($path[0] == '^') {
+        if ($path[strlen($path) - 1] != '$') {
+            $path .= '$';
+        }
+        $pattern = '#' . $path . '#i';
+    } elseif (empty($path) || $path == '/') {
+        $pattern = '#^' . $optionnal_slash_subpattern . '$#';
+    } else {
+        $parsed = [];
         $elts = explode('/', $path);
 
         $parameters_count = 0;
 
-        foreach ($elts as $elt)
-        {
-            if (empty($elt))
+        foreach ($elts as $elt) {
+            if (empty($elt)) {
                 continue;
+            }
 
             $name = null;
 
-            if ($elt == "**")
-            {
+            if ($elt == '**') {
                 $parsed[] = $double_asterisk_subpattern;
                 $name = $parameters_count;
-            } 
-            elseif ($elt == "*")
-            {
+            } elseif ($elt == '*') {
                 $parsed[] = $single_asterisk_subpattern;
                 $name = $parameters_count;
-            }
-            elseif ($elt[0] == ":")
-            {
-                if (preg_match('/^:([^\:]+)$/', $elt, $matches))
-                {
+            } elseif ($elt[0] == ':') {
+                if (preg_match('/^:([^\:]+)$/', $elt, $matches)) {
                     $parsed[] = $single_asterisk_subpattern;
                     $name = $matches[1];
                 }
-            } 
-            elseif (strpos($elt, '*') !== false)
-            {
+            } elseif (str_contains($elt, '*')) {
                 $sub_elts = explode('*', $elt);
-                $parsed_sub = array();
-                foreach ($sub_elts as $sub_elt)
-                {
-                    $parsed_sub[] = preg_quote($sub_elt, "#");
+                $parsed_sub = [];
+                foreach ($sub_elts as $sub_elt) {
+                    $parsed_sub[] = preg_quote($sub_elt, '#');
                     $name = $parameters_count;
                 }
 
-                $parsed[] = "/" . implode($no_slash_asterisk_subpattern, $parsed_sub);
-            }
-            else
-            {
-                $parsed[] = "/" . preg_quote($elt, "#");
+                $parsed[] = '/' . implode($no_slash_asterisk_subpattern, $parsed_sub);
+            } else {
+                $parsed[] = '/' . preg_quote($elt, '#');
             }
 
-            if (is_null($name))
+            if (null === $name) {
                 continue;
-            if (!array_key_exists($parameters_count, $names) || is_null($names[$parameters_count]))
+            }
+            if (!array_key_exists($parameters_count, $names) || null === $names[$parameters_count]) {
                 $names[$parameters_count] = $name;
-            $parameters_count++;
+            }
+            ++$parameters_count;
         }
 
-        $pattern = "#^" . implode('', $parsed) . $optionnal_slash_subpattern . "?$#i";
+        $pattern = '#^' . implode('', $parsed) . $optionnal_slash_subpattern . '?$#i';
     }
 
-    return array("method" => $method, 
-                 "pattern" => $pattern, 
-                 "names" => $names, 
-                 "function" => $func, 
-                 "options" => $options);
+    return ['method' => $method,
+        'pattern' => $pattern,
+        'names' => $names,
+        'function' => $func,
+        'options' => $options];
 }
 
 function route_find($method, $path)
 {
     $routes = route();
     $method = strtoupper($method);
-    foreach ($routes as $route)
-    {
-        if ($method == $route["method"] && preg_match($route["pattern"], $path, $matches))
-        {
-            $options = $route["options"];
-            $params = array_key_exists('params', $options) ? $options["params"] : array();
-            if (count($matches) > 1)
-            {
+    foreach ($routes as $route) {
+        if ($method == $route['method'] && preg_match($route['pattern'], $path, $matches)) {
+            $options = $route['options'];
+            $params = array_key_exists('params', $options) ? $options['params'] : [];
+            if (count($matches) > 1) {
                 array_shift($matches);
                 $n_matches = count($matches);
-                $names = array_values($route["names"]);
+                $names = array_values($route['names']);
                 $n_names = count($names);
-                if ($n_matches < $n_names)
-                {
+                if ($n_matches < $n_names) {
                     $a = array_fill(0, $n_names - $n_matches, null);
                     $matches = array_merge($matches, $a);
-                }
-                elseif ($n_matches > $n_names)
-                {
+                } elseif ($n_matches > $n_names) {
                     $names = range($n_names, $n_matches - 1);
                 }
                 $params = array_replace($params, array_combine($names, $matches));
             }
-            $route["params"] = $params;
+            $route['params'] = $params;
+
             return $route;
         }
     }
+
     return false;
 }
 
-function render($content_or_func, $layout = '', $locals = array())
+function render($content_or_func, $layout = '', $locals = [])
 {
     $args = func_get_args();
     $content_or_func = array_shift($args);
     $layout = count($args) > 0 ? array_shift($args) : layout();
     $view_path = file_path(option('views_dir'), $content_or_func);
 
-    if (function_exists('before_render'))
-        list($content_or_func, $layout, $locals, $view_path) = before_render($content_or_func, $layout, $locals, $view_path);
+    if (function_exists('before_render')) {
+        [$content_or_func, $layout, $locals, $view_path] = before_render($content_or_func, $layout, $locals, $view_path);
+    }
 
     $vars = array_merge(set(), $locals);
 
-    if (function_exists($content_or_func))
-    {
+    if (function_exists($content_or_func)) {
         ob_start();
         call_user_func($content_or_func, $vars);
         $content = ob_get_clean();
-    } 
-    elseif (file_exists($view_path))
-    {
+    } elseif (file_exists($view_path)) {
         ob_start();
         extract($vars);
         include $view_path;
         $content = ob_get_clean();
-    }
-    else
-    {
-        if (substr_count($content_or_func, '%') !== count($vars))
+    } else {
+        if (substr_count($content_or_func, '%') !== count($vars)) {
             $content = $content_or_func;
-        else
+        } else {
             $content = vsprintf($content_or_func, $vars);
+        }
     }
 
-    if (empty($layout))
+    if (empty($layout)) {
         return $content;
+    }
 
-    return render($layout, null, array('content' => $content));
+    return render($layout, null, ['content' => $content]);
 }
 
-function html($content_or_func, $layout = '', $locals = array())
+function html($content_or_func, $layout = '', $locals = [])
 {
-    if (!headers_sent())
+    if (!headers_sent()) {
         header('Content-Type: text/html; charset=' . strtolower(option('encoding')));
+    }
     $args = func_get_args();
+
     return call_user_func_array('render', $args);
 }
 
 function layout($function_or_file = null)
 {
     static $layout = null;
-    if (func_num_args() > 0)
+    if (func_num_args() > 0) {
         $layout = $function_or_file;
+    }
+
     return $layout;
 }
 
 function url_for($params = null)
 {
-    $paths = array();
+    $paths = [];
     $params = func_get_args();
-    $get_params = array();
-    foreach ($params as $param)
-    {
-        if (is_array($param))
-        {
+    $get_params = [];
+    foreach ($params as $param) {
+        if (is_array($param)) {
             $get_params = array_merge($get_params, $param);
+
             continue;
         }
-        if (filter_var($param, FILTER_VALIDATE_URL))
-        {
+        if (filter_var($param, FILTER_VALIDATE_URL)) {
             $paths[] = urlencode($param);
+
             continue;
         }
         $p = explode('/', $param);
-        foreach ($p as $v)
-        {
-            if (!empty($v))
+        foreach ($p as $v) {
+            if (!empty($v)) {
                 $paths[] = str_replace('%23', '#', rawurlencode($v));
+            }
         }
     }
 
     $path = rtrim(implode('/', $paths), '/');
 
-    if (!empty($get_params))
-    {
-        foreach ($get_params as $k => $v)
+    if (!empty($get_params)) {
+        foreach ($get_params as $k => $v) {
             $path .= '&amp;' . rawurlencode($k) . '=' . rawurlencode($v);
+        }
     }
 
-    if (!filter_var($path, FILTER_VALIDATE_URL))
-    {
-
+    if (!filter_var($path, FILTER_VALIDATE_URL)) {
         $base_uri = option('base_uri');
         $path = file_path($base_uri, $path);
     }
 
-    if (DIRECTORY_SEPARATOR != '/')
+    if (DIRECTORY_SEPARATOR != '/') {
         $path = str_replace(DIRECTORY_SEPARATOR, '/', $path);
+    }
 
     return $path;
 }
 
 function h($str, $quote_style = ENT_NOQUOTES, $charset = null)
 {
-    if (is_null($charset))
+    if (null === $charset) {
         $charset = strtoupper(option('encoding'));
+    }
+
     return htmlspecialchars($str, $quote_style, $charset);
 }
 
@@ -652,30 +611,25 @@ define('HTTP_VARIANT_ALSO_VARIES', 506);
 define('HTTP_INSUFFICIENT_STORAGE', 507);
 define('HTTP_NOT_EXTENDED', 510);
 
-function status($code = 500)
+function status($code = 500): void
 {
-    if (!headers_sent())
-    {
+    if (!headers_sent()) {
         $str = http_response_status_code($code);
         header($str);
     }
 }
 
-function redirect_to($params)
+function redirect_to($params): void
 {
-    if (!headers_sent())
-    {
+    if (!headers_sent()) {
         $status = HTTP_MOVED_TEMPORARILY;
 
         $params = func_get_args();
-        $n_params = array();
+        $n_params = [];
 
-        foreach ($params as $param)
-        {
-            if (is_array($param))
-            {
-                if (array_key_exists('status', $param))
-                {
+        foreach ($params as $param) {
+            if (is_array($param)) {
+                if (array_key_exists('status', $param)) {
                     $status = $param['status'];
                     unset($param['status']);
                 }
@@ -690,39 +644,30 @@ function redirect_to($params)
 
 function http_response_status($num = null)
 {
-    $status = array(100 => 'Continue', 101 => 'Switching Protocols', 102 =>
-        'Processing', 200 => 'OK', 201 => 'Created', 202 => 'Accepted', 203 =>
-        'Non-Authoritative Information', 204 => 'No Content', 205 => 'Reset Content',
-        206 => 'Partial Content', 207 => 'Multi-Status', 226 => 'IM Used', 300 =>
-        'Multiple Choices', 301 => 'Moved Permanently', 302 => 'Found', 303 =>
-        'See Other', 304 => 'Not Modified', 305 => 'Use Proxy', 306 => 'Reserved', 307 =>
-        'Temporary Redirect', 400 => 'Bad Request', 401 => 'Unauthorized', 402 =>
-        'Payment Required', 403 => 'Forbidden', 404 => 'Not Found', 405 =>
-        'Method Not Allowed', 406 => 'Not Acceptable', 407 =>
-        'Proxy Authentication Required', 408 => 'Request Timeout', 409 => 'Conflict',
-        410 => 'Gone', 411 => 'Length Required', 412 => 'Precondition Failed', 413 =>
-        'Request Entity Too Large', 414 => 'Request-URI Too Long', 415 =>
-        'Unsupported Media Type', 416 => 'Requested Range Not Satisfiable', 417 =>
-        'Expectation Failed', 422 => 'Unprocessable Entity', 423 => 'Locked', 424 =>
-        'Failed Dependency', 426 => 'Upgrade Required', 500 => 'Internal Server Error',
+    $status = [100 => 'Continue', 101 => 'Switching Protocols', 102 => 'Processing', 200 => 'OK', 201 => 'Created', 202 => 'Accepted', 203 => 'Non-Authoritative Information', 204 => 'No Content', 205 => 'Reset Content',
+        206 => 'Partial Content', 207 => 'Multi-Status', 226 => 'IM Used', 300 => 'Multiple Choices', 301 => 'Moved Permanently', 302 => 'Found', 303 => 'See Other', 304 => 'Not Modified', 305 => 'Use Proxy', 306 => 'Reserved', 307 => 'Temporary Redirect', 400 => 'Bad Request', 401 => 'Unauthorized', 402 => 'Payment Required', 403 => 'Forbidden', 404 => 'Not Found', 405 => 'Method Not Allowed', 406 => 'Not Acceptable', 407 => 'Proxy Authentication Required', 408 => 'Request Timeout', 409 => 'Conflict',
+        410 => 'Gone', 411 => 'Length Required', 412 => 'Precondition Failed', 413 => 'Request Entity Too Large', 414 => 'Request-URI Too Long', 415 => 'Unsupported Media Type', 416 => 'Requested Range Not Satisfiable', 417 => 'Expectation Failed', 422 => 'Unprocessable Entity', 423 => 'Locked', 424 => 'Failed Dependency', 426 => 'Upgrade Required', 500 => 'Internal Server Error',
         501 => 'Not Implemented', 502 => 'Bad Gateway', 503 => 'Service Unavailable',
-        504 => 'Gateway Timeout', 505 => 'HTTP Version Not Supported', 506 =>
-        'Variant Also Negotiates', 507 => 'Insufficient Storage', 510 => 'Not Extended');
-    if (is_null($num))
+        504 => 'Gateway Timeout', 505 => 'HTTP Version Not Supported', 506 => 'Variant Also Negotiates', 507 => 'Insufficient Storage', 510 => 'Not Extended'];
+    if (null === $num) {
         return $status;
+    }
+
     return array_key_exists($num, $status) ? $status[$num] : '';
 }
 
 function http_response_status_is_valid($num)
 {
     $r = http_response_status($num);
+
     return !empty($r);
 }
 
 function http_response_status_code($num)
 {
-    if ($str = http_response_status($num))
+    if ($str = http_response_status($num)) {
         return "HTTP/1.1 $num $str";
+    }
 }
 
 function file_path($path)
@@ -731,33 +676,35 @@ function file_path($path)
     $ds = '/';
     $win_ds = '\\';
     $n_path = count($args) > 1 ? implode($ds, $args) : $path;
-    if (strpos($n_path, $win_ds) !== false)
+    if (str_contains($n_path, $win_ds)) {
         $n_path = str_replace($win_ds, $ds, $n_path);
-    $n_path = preg_replace('/' . preg_quote($ds, $ds) . '{2,}' . '/', $ds, $n_path);
+    }
+    $n_path = preg_replace('/' . preg_quote($ds, $ds) . '{2,}/', $ds, $n_path);
+
     return $n_path;
 }
 
-if (!function_exists('array_replace'))
-{
-    function array_replace(array & $array, array & $array1)
+if (!function_exists('array_replace')) {
+    function array_replace(array &$array, array &$array1)
     {
         $args = func_get_args();
         $count = func_num_args();
 
-        for ($i = 0; $i < $count; ++$i)
-        {
-            if (is_array($args[$i]))
-            {
-                foreach ($args[$i] as $key => $val)
+        for ($i = 0; $i < $count; ++$i) {
+            if (is_array($args[$i])) {
+                foreach ($args[$i] as $key => $val) {
                     $array[$key] = $val;
-            }
-            else
-            {
-                trigger_error(__function__ . '(): Argument #' . ($i + 1) . ' is not an array',
-                    E_USER_WARNING);
+                }
+            } else {
+                trigger_error(
+                    __FUNCTION__ . '(): Argument #' . ($i + 1) . ' is not an array',
+                    E_USER_WARNING
+                );
+
                 return null;
             }
         }
+
         return $array;
     }
 }
@@ -766,9 +713,9 @@ function call_if_exists($func)
 {
     $args = func_get_args();
     $func = array_shift($args);
-    if (is_callable($func))
+    if (is_callable($func)) {
         return call_user_func_array($func, $args);
-    return;
+    }
 }
 
 function value_default($value, $default)
@@ -776,39 +723,38 @@ function value_default($value, $default)
     return empty($value) ? $default : $value;
 }
 
-function halt($errno = SERVER_ERROR, $msg = '')
+function halt($errno = SERVER_ERROR, $msg = ''): void
 {
     $args = func_get_args();
     $error = array_shift($args);
 
-    if (is_string($errno))
-    {
+    if (is_string($errno)) {
         $msg = $errno;
         $oldmsg = array_shift($args);
         $errno = empty($oldmsg) ? SERVER_ERROR : $oldmsg;
+    } elseif (!empty($args)) {
+        $msg = array_shift($args);
     }
-    else
-        if (!empty($args))
-            $msg = array_shift($args);
 
-    if (empty($msg) && $errno == NOT_FOUND)
+    if (empty($msg) && $errno == NOT_FOUND) {
         $msg = request_uri();
-    if (empty($msg))
-        $msg = "";
+    }
+    if (empty($msg)) {
+        $msg = '';
+    }
 
     error_handler_dispatcher($errno, $msg, null, null);
     exit(1);
 }
 
-function error_handler_dispatcher($errno, $errstr, $errfile, $errline)
+function error_handler_dispatcher($errno, $errstr, $errfile, $errline): void
 {
     $back_trace = debug_backtrace();
-    while ($trace = array_shift($back_trace))
-    {
-        if ($trace['function'] == 'halt')
-        {
+    while ($trace = array_shift($back_trace)) {
+        if ($trace['function'] == 'halt') {
             $errfile = $trace['file'];
             $errline = $trace['line'];
+
             break;
         }
     }
@@ -823,17 +769,21 @@ function error_default_handler($errno, $errstr, $errfile, $errline)
 
     status($http_error_code);
 
-    return $http_error_code == NOT_FOUND ? error_not_found_output($errno, $errstr, $errfile,
-        $errline) : error_server_error_output($errno, $errstr, $errfile, $errline);
+    return $http_error_code == NOT_FOUND ? error_not_found_output(
+        $errno,
+        $errstr,
+        $errfile,
+        $errline
+    ) : error_server_error_output($errno, $errstr, $errfile, $errline);
 }
 
 function error_not_found_output($errno, $errstr, $errfile, $errline)
 {
-    if (!function_exists('not_found'))
-    {
+    if (!function_exists('not_found')) {
         function not_found($errno, $errstr, $errfile = null, $errline = null)
         {
             $msg = h(rawurldecode($errstr));
+
             return html("<h1>404 Page not found</h1><p>The following page was not found:</p><code>{$msg}</code>", null);
         }
     }
@@ -843,8 +793,7 @@ function error_not_found_output($errno, $errstr, $errfile, $errline)
 
 function error_server_error_output($errno, $errstr, $errfile, $errline)
 {
-    if (!function_exists('server_error'))
-    {
+    if (!function_exists('server_error')) {
         function server_error($errno, $errstr, $errfile = null, $errline = null)
         {
             $is_http_error = http_response_status_is_valid($errno);
@@ -868,8 +817,9 @@ function error_server_error_output($errno, $errstr, $errfile, $errline)
   </div>
   <p class="footer">{$link}</p>
 </body>
-</html>            
+</html>
 EOT;
+
             return html($html, null, $args);
         }
     }
